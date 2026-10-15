@@ -1,1 +1,1 @@
-from .model import VideoModel
+from .model import VideoModel as VideoModel
