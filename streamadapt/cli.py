@@ -274,7 +274,7 @@ def main():
             parser.error("Positive training sizes and width at least two required")
         train(args)
     elif args.command == "run":
-        if not 0 < args.alpha < 1 or not 0 < args.beta < 1 or min(args.evidence_std, args.proposal_interval, args.audit_frames, args.adapt_steps) <= 0:
+        if not 0 < args.alpha < 1 or not 0 < args.beta < 1 or args.alpha + args.beta >= 1 or args.alternative_mean <= args.null_mean or min(args.evidence_std, args.proposal_interval, args.audit_frames, args.adapt_steps, args.window, args.decision_window, args.recovery_window, args.adapt_lr) <= 0:
             parser.error("Invalid sequential-test or adaptation parameters")
         run(args)
     else:
