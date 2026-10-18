@@ -96,12 +96,11 @@ Run separate corruption orderings and streams with the same predeclared settings
 
 ## Fixed reproduction setting
 
-From-scratch CPU CNN32 on 128px video, seed13, 50 epochs; past-window adaptation and future proxy gate, separate post-hoc task/accuracy harm.
-
-The checked-in entry point fixes data seeds, methods, budgets and output paths. Inspect its commands without starting any computation:
+The fixed setting renders actual MJPG videos of moving circles, squares and triangles. Source/validation/stream contain 6/2/4 independent physical clips per class; colors and motion phases are independent of the shape label. Stream illumination alternates between declared brightness conditions. Each clip is one indivisible split group.
 
 ```bash
-python reproduce.py --plan --manifest data/manifest
+python reproduce.py --plan
+python reproduce.py --output outputs/finite-setting
 ```
 
-Remove `--plan` to execute the registered pipeline in a fresh output directory. The entry point calls the existing implementation; it does not insert paper results. Installation uses the package instructions above.
+`finite_data.py --output outputs/finite-setting/generated --seed 13` creates the AVI files and relative-path `videos.csv`; the existing prepare command decodes them into 128px frames. The CPU CNN32 source model and full/source/immediate controls use seed 13, eight-frame clips and 50 epochs. The finite classification task is geometric object identity; labels enter source fitting and post-hoc accuracy/CE harm audits, while online adaptation and the future evidence gate consume observations. Optional `--manifest videos.csv` uses other videos.
