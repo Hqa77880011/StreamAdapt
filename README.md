@@ -84,7 +84,7 @@ streamadapt run --data data/decoded --source outputs/source/source.pt --output o
 
 `metrics.json` reports live frame-level accuracy, cumulative labeled cross-entropy regret against the fixed source comparator, harmful update rate, mean commitment delay, recovery frames and complete replay FPS. Regret is a cumulative sum rather than a normalized benchmark-pool value. Recovery compares a post-boundary rolling window against the preceding window's accuracy minus the registered tolerance; source recovery is omitted because it performs no update.
 
-Harmful updates are evaluated by frozen before/after states on the next `audit_frames` future frame pairs using the same prequential proxy. These audits do not control the learner. Commits too near the end remain unresolved and are excluded from the rate with their count reported. A stream without completed commits has a null harm rate. FPS includes decoding the prepared arrays, live/source prediction, adaptation, optical flow, evidence and commit audits, so it reflects the full reporting pipeline rather than an isolated backbone pass.
+Frozen before/after models are evaluated on the next `audit_frames` strictly future frame pairs. `harmful_update_rate` uses the mean labeled task cross-entropy increase above `--task-harm-tolerance` (default zero); `accuracy_harmful_update_rate` uses a decrease in paired future accuracy. `proxy_harmful_update_rate` separately reports increases in the unlabeled prequential proxy above `--harm-tolerance`. Labels enter only these post-hoc audits and never control proposal, commitment or rollback. Commits too near the end remain unresolved and are excluded with their count reported. A stream without completed audits has null harm rates. `mean_excess_ce` is per-frame excess CE, while `cumulative_regret` remains the sum in nats. FPS includes decoding, live/source prediction, adaptation, optical flow and all reporting audits.
 
 `stream.json` retains every issued prediction, pending status and gate score. `events.json` records proposal/commit timing, rejections and rollback. `commit_audits.json` contains completed paired harm assessments. `deployed.pt` stores the final deployed parameters; `source.pt` remains unchanged.
 
@@ -93,3 +93,15 @@ streamadapt plot --runs outputs/full outputs/frozen outputs/tent outputs/immedia
 ```
 
 Run separate corruption orderings and streams with the same predeclared settings to compare transient and persistent shifts. Generated figures use only metrics produced by those runs.
+
+## Fixed reproduction setting
+
+From-scratch CPU CNN32 on 128px video, seed13, 50 epochs; past-window adaptation and future proxy gate, separate post-hoc task/accuracy harm.
+
+The checked-in entry point fixes data seeds, methods, budgets and output paths. Inspect its commands without starting any computation:
+
+```bash
+python reproduce.py --plan --manifest data/manifest
+```
+
+Remove `--plan` to execute the registered pipeline in a fresh output directory. The entry point calls the existing implementation; it does not insert paper results. Installation uses the package instructions above.

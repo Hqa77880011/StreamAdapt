@@ -127,6 +127,17 @@ def recovery(target, predicted, boundaries, args):
     return records
 
 
+def summarize_audit(audit, proxy_tolerance=0, task_tolerance=0):
+    """Score a frozen commit on future labels without feeding them to the gate."""
+    proxy = float(np.mean(audit["difference"]))
+    task = float(np.mean(audit["task_difference"]))
+    accuracy = float(np.mean(audit["accuracy_difference"]))
+    return dict(commit_frame=audit["frame"], mean_prequential_change=proxy,
+                proxy_harmful=proxy > proxy_tolerance, mean_task_ce_change=task,
+                mean_accuracy_change=accuracy, harmful=task > task_tolerance,
+                accuracy_harmful=accuracy < 0, future_frames=len(audit["difference"]))
+
+
 def run(args):
     root, output = Path(args.data), Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
@@ -170,11 +181,17 @@ def run(args):
                         continue
                     audit["difference"].append(loss_value(audit["after"], previous, current, args, index)
                                                - loss_value(audit["before"], previous, current, args, index))
+                    with torch.no_grad():
+                        before_logits = audit["before"](image_tensor(list(buffer), args.device))[0]
+                        after_logits = audit["after"](image_tensor(list(buffer), args.device))[0]
+                        audit["task_difference"].append(float(F.cross_entropy(after_logits[None], label)
+                                                             - F.cross_entropy(before_logits[None], label)))
+                        audit["accuracy_difference"].append(int(after_logits.argmax() == label.item())
+                                                               - int(before_logits.argmax() == label.item()))
                 remaining = []
                 for audit in audits:
                     if len(audit["difference"]) >= args.audit_frames:
-                        completed.append(dict(commit_frame=audit["frame"], mean_prequential_change=float(np.mean(audit["difference"])),
-                                              harmful=bool(np.mean(audit["difference"]) > args.harm_tolerance)))
+                        completed.append(summarize_audit(audit, args.harm_tolerance, args.task_harm_tolerance))
                     else:
                         remaining.append(audit)
                 audits = remaining
@@ -191,7 +208,8 @@ def run(args):
                     if commit:
                         before = copy.deepcopy(deployed)
                         anchor, deployed = before, candidate
-                        audits.append(dict(frame=index, before=copy.deepcopy(before), after=copy.deepcopy(deployed), difference=[]))
+                        audits.append(dict(frame=index, before=copy.deepcopy(before), after=copy.deepcopy(deployed),
+                                           difference=[], task_difference=[], accuracy_difference=[]))
                         events.append(dict(frame=index, action="commit", proposal=proposal, delay=index - proposal, evidence=evidence))
                         candidate, rollback_score = None, 0.0
                     elif reject:
@@ -207,7 +225,8 @@ def run(args):
                 if args.method in ("immediate", "tent"):
                     before = copy.deepcopy(deployed)
                     anchor, deployed = before, candidate
-                    audits.append(dict(frame=index, before=before, after=copy.deepcopy(deployed), difference=[]))
+                    audits.append(dict(frame=index, before=before, after=copy.deepcopy(deployed),
+                                       difference=[], task_difference=[], accuracy_difference=[]))
                     events.append(dict(frame=index, action="commit", proposal=index, delay=0, evidence=None))
                     candidate, rollback_score = None, 0.0
             rows.append(dict(frame=index, label=record["label"], prediction=prediction[-1], pending=candidate is not None,
@@ -220,7 +239,10 @@ def run(args):
     delays = [event["delay"] for event in events if event["action"] == "commit"]
     result = dict(config=vars(args), online_accuracy=float(np.mean(np.asarray(target) == prediction)),
                   cumulative_regret=float(np.sum(np.asarray(live_losses) - source_losses)),
+                  mean_excess_ce=float(np.mean(np.asarray(live_losses) - source_losses)),
                   harmful_update_rate=float(np.mean([row["harmful"] for row in completed])) if completed else None,
+                  proxy_harmful_update_rate=float(np.mean([row["proxy_harmful"] for row in completed])) if completed else None,
+                  accuracy_harmful_update_rate=float(np.mean([row["accuracy_harmful"] for row in completed])) if completed else None,
                   audited_commits=len(completed), unresolved_commit_audits=len(audits), commits=len(delays),
                   mean_commit_delay=float(np.mean(delays)) if delays else None, fps=index / elapsed,
                   recovery=[] if args.method == "source" else recovery(target, prediction, boundaries, args),
@@ -258,7 +280,7 @@ def main():
     for name, default in (("adapt-lr", 0.0001), ("alpha", 0.05), ("beta", 0.1), ("null-mean", 0),
                           ("alternative-mean", 0.01), ("evidence-std", 0.1), ("rollback-threshold", 1),
                           ("rollback-drift", 0.001), ("motion-weight", 1), ("feature-weight", 0.1),
-                          ("track-weight", 0.1), ("harm-tolerance", 0), ("recovery-tolerance", 0.05)):
+                          ("track-weight", 0.1), ("harm-tolerance", 0), ("task-harm-tolerance", 0), ("recovery-tolerance", 0.05)):
         execution.add_argument(f"--{name}", type=float, default=default)
     execution.add_argument("--device", default="cpu")
     plot = sub.add_parser("plot")
